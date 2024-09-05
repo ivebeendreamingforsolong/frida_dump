@@ -26,7 +26,15 @@ def read_frida_js_source():
         return f.read()
 
 def on_message(message, data):
-    pass
+    if data:
+        chunk_index = message['payload']['chunk_index']
+        total_chunks = message['payload']['total_chunks']
+        print(f"Receiving chunk {chunk_index + 1}/{total_chunks}")
+        with open(dump_so_name, "ab") as f:
+            f.write(data)  # 逐块写入文件
+    else:
+        if message['payload']['status'] == "complete":
+            print("Dump complete.")
 
 if __name__ == "__main__":
     device: frida.core.Device = frida.get_usb_device()
@@ -37,25 +45,21 @@ if __name__ == "__main__":
     script.load()
 
     if len(sys.argv) < 2:
-        allmodule = script.exports.allmodule()
+        allmodule = script.exports_sync.allmodule()
         for module in allmodule:
             print(module["name"])
     else:
         origin_so_name = sys.argv[1]
-        module_info = script.exports.findmodule(origin_so_name)
+        module_info = script.exports_sync.findmodule(origin_so_name)
         print(module_info)
         base = module_info["base"]
         size = module_info["size"]
-        module_buffer = script.exports.dumpmodule(origin_so_name)
-        if module_buffer != -1:
-            dump_so_name = origin_so_name + ".dump.so"
-            with open(dump_so_name, "wb") as f:
-                f.write(module_buffer)
-                f.close()
-                arch = script.exports.arch()
-                fix_so_name = fix_so(arch, origin_so_name, dump_so_name, base, size)
-                
-                print(fix_so_name)
-                os.remove(dump_so_name)
+        dump_so_name = origin_so_name + ".dump.so"
 
+        script.exports_sync.dumpmodule(origin_so_name)
 
+        arch = script.exports_sync.arch()
+        fix_so_name = fix_so(arch, origin_so_name, dump_so_name, base, size)
+        
+        print(fix_so_name)
+        os.remove(dump_so_name)
